@@ -1,13 +1,15 @@
 var http = require('http');
 var fs = require('fs');
 var Client = require('node-rest-client').Client;
+var sprintf = require('sprintf-js').sprintf;
+var url = require('url') ;
 
-var _api = "https://api.at.govt.nz/v2/gtfs/";
-var _tripID = "trips/tripId/";
-var _routeID = "routes/routeId/";
-var _key = '';
-var _stopId = "8515";
-var _timeWindow = 10 * 60; // 30 minutes
+const _api = "https://api.at.govt.nz/v2/gtfs/";
+const _tripID = "trips/tripId/";
+const _routeID = "routes/routeId/";
+const _stopId = "8515";
+const _timeWindow = 10 * 60; // 10 minutes
+const _routes = ['274', '277'];
 
 _key = fs.readFileSync('key.txt', 'utf8').trim(); //Sync so it reads before the server starts
 
@@ -44,12 +46,25 @@ function assignRoutes(times, callback) {
   counter = Object.keys(times).length;
   for (var key in times) {
     getRouteName(key, function(trip, routeName) {
-      times[trip].route = routeName;
+      times[trip].route = trimRouteName(routeName);
       counter--;
-      if (counter <= 0) {
+      if (counter <= 0) { // Only fire the callback when all routes are named.
         callback(times);
       }
     })
+  }
+}
+
+function trimRouteName(route) { //Lazy (and inaccurate) method to determine route shortname
+  return route.substring(0, 3);
+}
+
+function filterRoutes(timesDict) {
+  filteredTimes = {};
+  for (key in timesDict) {
+    if (_routes.indexOf(timesDict[key].route) > -1) {
+      console.log(key, timesDict[key]);
+    }
   }
 }
 
@@ -69,21 +84,34 @@ function getAllData() {
       id = data[i]['trip_id'];
       if (arrival_time >= timeSinceMidnight && arrival_time <= (timeSinceMidnight + _timeWindow)) {
         times[id] = {
-          "arrival_time": arrival_time,
+          "arrival_time": convertArrivalTimeTo24hr(arrival_time),
           "route": ""
         };
       }
     }
     assignRoutes(times, function(nextTimes) {
-      console.log(nextTimes);
+      times = nextTimes;
+      console.log(times);
+      filterRoutes(times);
     })
     // console.log("Loop complete", times);
   });
 }
 
+function convertArrivalTimeTo24hr(time) {
+  hours = Math.floor(time / 60 / 60);
+  minutes = Math.floor(time / 60 - hours * 60);
+  seconds = Math.floor(time - hours * 60 * 60 - minutes * 60);
+  outputString = sprintf("%02d:%02d:%02d", hours, minutes, seconds);
+  return outputString;
+}
+
+// console.log(convertArrivalTimeTo24hr(57785, false));
 getAllData();
 
 var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
+  queryObject = url.parse(req.url,true).query;
+  console.log(queryObject);
   res.writeHead(200, {
     'Content-Type': 'application/json'
   }); //res is writeable stream that is used to send data back to client.
