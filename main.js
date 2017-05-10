@@ -8,7 +8,7 @@ const _api = "https://api.at.govt.nz/v2/gtfs/";
 const _tripID = "trips/tripId/";
 const _routeID = "routes/routeId/";
 const _stopId = "8515";
-const _timeWindow = 10 * 60; // 10 minutes
+const _timeWindow = 20 * 60; // 10 minutes
 const _routes = ['274', '277'];
 
 _key = fs.readFileSync('key.txt', 'utf8').trim(); //Sync so it reads before the server starts
@@ -61,11 +61,23 @@ function trimRouteName(route) { //Lazy (and inaccurate) method to determine rout
 
 function filterRoutes(timesDict) {
   filteredTimes = {};
+  console.log("Times dictionary", timesDict);
   for (key in timesDict) {
     if (_routes.indexOf(timesDict[key].route) > -1) {
-      console.log(key, timesDict[key]);
+      // console.log(key, timesDict[key]);
+      unique = true;
+      for(fKey in filteredTimes){
+        if(timesDict[key].arrival_time == filteredTimes[fKey].arrival_time && timesDict[key].route == filteredTimes[fKey].route){
+          unique = false;
+          break
+        }
+      }
+      if(unique){
+        filteredTimes[key] = timesDict[key];
+      }
     }
   }
+  console.log("Filtered times dict", filteredTimes);
 }
 
 function getAllData() {
@@ -91,7 +103,7 @@ function getAllData() {
     }
     assignRoutes(times, function(nextTimes) {
       times = nextTimes;
-      console.log(times);
+      // console.log(times);
       filterRoutes(times);
     })
     // console.log("Loop complete", times);
