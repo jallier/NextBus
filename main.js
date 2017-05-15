@@ -26,7 +26,19 @@ console.log(args);
 
 client.registerMethod("departures", "https://api.at.govt.nz/v2/public-restricted/departures/" + _stopId, "GET");
 
+var response = {};
+
 function getAllData() {
+  updateTimesDict(function(times){
+    console.log("Function is complete");
+    response = times;
+    console.log(response);
+  });
+  return response;
+}
+
+function updateTimesDict(callback){
+  out = {"status":"ok", "response":[]};
   client.methods.departures(args, function(data, raw) {
     allData = data.response.movements;
     filteredRoutes = filterRoutes(allData)
@@ -39,8 +51,10 @@ function getAllData() {
       expTime = new Date(stop.expectedArrivalTime);
       expH = expTime.getHours();
       expM = expTime.getMinutes();
+      out["response"].push({"route": stop.route_short_name, "scheduled_time":stop.scheduledArrivalTime, "expected_time":stop.expectedArrivalTime, "time_to_arrival": new Date(schedTime - expTime).getMinutes()});
       console.log("Route: ", stop.route_short_name, "Scheduled arrival time: ", schedH, schedM, "Expected arrival time:", expH, expM);
     }
+    return callback(out);
   });
 }
 
@@ -85,15 +99,17 @@ function convertArrivalTimeTo24hr(time) {
   return outputString;
 }
 
-getAllData();
+// getAllData();
 
 var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
+  getAllData();
   queryObject = url.parse(req.url, true).query;
   console.log(queryObject);
   res.writeHead(200, {
     'Content-Type': 'application/json'
   }); //res is writeable stream that is used to send data back to client.
-  res.write('{"text":"Hello Http"}');
+  // res.write('{"text":"Hello Http"}');
+  res.write(JSON.stringify(response));
   res.end();
 });
 server.listen(8080);
