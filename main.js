@@ -2,13 +2,13 @@ var http = require('http');
 var fs = require('fs');
 var Client = require('node-rest-client').Client;
 var sprintf = require('sprintf-js').sprintf;
-var url = require('url') ;
+var url = require('url');
 
 const _api = "https://api.at.govt.nz/v2/gtfs/";
 const _tripID = "trips/tripId/";
 const _routeID = "routes/routeId/";
 const _stopId = "8515";
-const _timeWindow = 20 * 60; // 10 minutes
+const _timeWindow = 30 * 60 * 1000; // 30 minutes in ms
 const _routes = ['274', '277'];
 
 _key = fs.readFileSync('key.txt', 'utf8').trim(); //Sync so it reads before the server starts
@@ -24,90 +24,52 @@ var args = {
 };
 console.log(args);
 
-client.registerMethod("getStopTimes", _api + "stopTimes/stopId/" + _stopId, "GET");
-client.registerMethod("tripID", _api + _tripID + "${tripID}", "GET");
-
-function getRouteName(tripID, callback) {
-  args = {
-    headers: {
-      "Ocp-Apim-Subscription-Key": _key
-    },
-    path: {
-      "tripID": tripID
-    }
-  };
-  client.methods.tripID(args, function(d, r) {
-    //call this function when route data returned
-    callback(tripID, d['response'][0]['route_id']);
-  });
-}
-
-function assignRoutes(times, callback) {
-  counter = Object.keys(times).length;
-  for (var key in times) {
-    getRouteName(key, function(trip, routeName) {
-      times[trip].route = trimRouteName(routeName);
-      counter--;
-      if (counter <= 0) { // Only fire the callback when all routes are named.
-        callback(times);
-      }
-    })
-  }
-}
-
-function trimRouteName(route) { //Lazy (and inaccurate) method to determine route shortname
-  return route.substring(0, 3);
-}
-
-function filterRoutes(timesDict) {
-  filteredTimes = {};
-  console.log("Times dictionary", timesDict);
-  for (key in timesDict) {
-    if (_routes.indexOf(timesDict[key].route) > -1) {
-      // console.log(key, timesDict[key]);
-      unique = true;
-      for(fKey in filteredTimes){
-        if(timesDict[key].arrival_time == filteredTimes[fKey].arrival_time && timesDict[key].route == filteredTimes[fKey].route){
-          unique = false;
-          break
-        }
-      }
-      if(unique){
-        filteredTimes[key] = timesDict[key];
-      }
-    }
-  }
-  console.log("Filtered times dict", filteredTimes);
-}
+client.registerMethod("departures", "https://api.at.govt.nz/v2/public-restricted/departures/" + _stopId, "GET");
 
 function getAllData() {
-  client.methods.getStopTimes(args, function(data, response) {
-    // parsed response body as js object
-    console.log("Received all data; running loop");
-    data = data['response'];
-    times = {};
-    timeSinceMidnight = 0;
-    date = new Date();
-    timeSinceMidnight = (date.getHours() * 60 * 60) + (date.getMinutes() * 60) + (date.getSeconds()); //in seconds
-    // console.log(timeSinceMidnight);
-    len = data.length;
-    for (i = 0; i < len; i++) {
-      arrival_time = data[i]['arrival_time_seconds'];
-      id = data[i]['trip_id'];
-      if (arrival_time >= timeSinceMidnight && arrival_time <= (timeSinceMidnight + _timeWindow)) {
-        times[id] = {
-          "arrival_time": convertArrivalTimeTo24hr(arrival_time),
-          "route": ""
-        };
-      }
-    }
-    assignRoutes(times, function(nextTimes) {
-      times = nextTimes;
-      // console.log(times);
-      filterRoutes(times);
-    })
-    // console.log("Loop complete", times);
+  client.methods.departures(args, function(data, raw) {
+    allData = data.response.movements;
+    filteredRoutes = filterRoutes(allData)
+    filteredTimes = filterTimes(filteredRoutes);
   });
+}
+
+function filterTimes(times) {
+  filteredTimes = {}
+  actualTime = new Date().getTime();
+  actualTimes = new Date();
+  for (key in times) {
+    current = times[key];
+    scheduledTime = new Date(current.scheduledArrivalTime);
+    if (current.expectedArrivalTime) {
+      expectedTime = new Date(current.expectedArrivalTime);
+    } else {
+      expectedTime = scheduledTime;
+    }
+    // console.log(scheduledTime.getHours() % 12, scheduledTime.getMinutes(), scheduledTime.getSeconds());
+    // console.log(expectedTime.getHours() % 12, expectedTime.getMinutes(), expectedTime.getSeconds());
+    scheduledTime = scheduledTime.getTime();
+    expectedTime = expectedTime.getTime();
+    // console.log("scheduledTime: ", scheduledTime, "expectedTime: ", expectedTime);
+    // console.log("");
+    if (scheduledTime >= actualTime && scheduledTime <= actualTime + _timeWindow) {
+      console.log(current);
+    }
+  }
+  // console.log(times);
+  console.log("Current time:", actualTimes.getTime(), actualTimes.getHours() % 12, actualTimes.getMinutes(), actualTimes.getSeconds());
+}
+
+function filterRoutes(routes) {
+  filteredRoutes = {}
+  len = routes.length;
+  for (i = 0; i < len; i++) {
+    current = routes[i];
+    if (_routes.indexOf(current.route_short_name) > -1) {
+      filteredRoutes[i] = current;
+    }
+  }
+  return filteredRoutes;
 }
 
 function convertArrivalTimeTo24hr(time) {
@@ -118,11 +80,10 @@ function convertArrivalTimeTo24hr(time) {
   return outputString;
 }
 
-// console.log(convertArrivalTimeTo24hr(57785, false));
 getAllData();
 
 var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
-  queryObject = url.parse(req.url,true).query;
+  queryObject = url.parse(req.url, true).query;
   console.log(queryObject);
   res.writeHead(200, {
     'Content-Type': 'application/json'
