@@ -31,6 +31,16 @@ function getAllData() {
     allData = data.response.movements;
     filteredRoutes = filterRoutes(allData)
     filteredTimes = filterTimes(filteredRoutes);
+    for(key in filteredTimes){
+      stop = filteredTimes[key];
+      schedTime = new Date(stop.scheduledArrivalTime);
+      schedH = schedTime.getHours();
+      schedM = schedTime.getMinutes();
+      expTime = new Date(stop.expectedArrivalTime);
+      expH = expTime.getHours();
+      expM = expTime.getMinutes();
+      console.log("Route: ", stop.route_short_name, "Scheduled arrival time: ", schedH, schedM, "Expected arrival time:", expH, expM);
+    }
   });
 }
 
@@ -46,18 +56,13 @@ function filterTimes(times) {
     } else {
       expectedTime = scheduledTime;
     }
-    // console.log(scheduledTime.getHours() % 12, scheduledTime.getMinutes(), scheduledTime.getSeconds());
-    // console.log(expectedTime.getHours() % 12, expectedTime.getMinutes(), expectedTime.getSeconds());
     scheduledTime = scheduledTime.getTime();
     expectedTime = expectedTime.getTime();
-    // console.log("scheduledTime: ", scheduledTime, "expectedTime: ", expectedTime);
-    // console.log("");
     if (scheduledTime >= actualTime && scheduledTime <= actualTime + _timeWindow) {
-      console.log(current);
+      filteredTimes[key]=current;
     }
   }
-  // console.log(times);
-  console.log("Current time:", actualTimes.getTime(), actualTimes.getHours() % 12, actualTimes.getMinutes(), actualTimes.getSeconds());
+  return filteredTimes;
 }
 
 function filterRoutes(routes) {
