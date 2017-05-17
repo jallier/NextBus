@@ -45,7 +45,7 @@ function getAllData(req, res) {
 }
 
 function updateTimesDict(req, res, callback){
-  out = {"status":"ok", "response":[]};
+  out = {"status":"ok", "time_requested":new Date(), "time_returned":"", "response":[]};
   client.methods.departures(args, function(data, raw) {
     allData = data.response.movements;
     filteredRoutes = filterRoutes(allData)
@@ -58,9 +58,10 @@ function updateTimesDict(req, res, callback){
       expTime = new Date(stop.expectedArrivalTime);
       expH = expTime.getHours();
       expM = expTime.getMinutes();
-      out["response"].push({"route": stop.route_short_name, "scheduled_time":stop.scheduledArrivalTime, "expected_time":stop.expectedArrivalTime, "time_to_arrival": new Date(schedTime - expTime).getMinutes()});
+      out.response.push({"route": stop.route_short_name, "scheduled_time":stop.scheduledArrivalTime, "expected_time":stop.expectedArrivalTime, "time_to_arrival": new Date(schedTime - expTime).getMinutes()});
       console.log("Route: ", stop.route_short_name, "Scheduled arrival time: ", schedH, schedM, "Expected arrival time:", expH, expM);
     }
+    out.time_returned = new Date();
     return callback(req, res, out);
   });
 }
