@@ -5,11 +5,7 @@ var sprintf = require('sprintf-js').sprintf;
 var url = require('url');
 
 const _api = "https://api.at.govt.nz/v2/gtfs/";
-const _tripID = "trips/tripId/";
-const _routeID = "routes/routeId/";
-const _stopId = "8515";
 const _timeWindow = 30 * 60 * 1000; // 30 minutes in ms
-const _routes = ['274', '277'];
 
 _key = fs.readFileSync('key.txt', 'utf8').trim(); //Sync so it reads before the server starts
 
@@ -19,21 +15,21 @@ var args = {
     "Ocp-Apim-Subscription-Key": _key
   },
   path: {
-    "tripID": "14277052711-20170420151239_v53.21"
+    "stopID": ""
   }
 };
 console.log(args);
 
-client.registerMethod("departures", "https://api.at.govt.nz/v2/public-restricted/departures/" + _stopId, "GET");
+client.registerMethod("departures", "https://api.at.govt.nz/v2/public-restricted/departures/${stopID}", "GET");
 
 
-function getAllData(req, res) {
+function getAllData(req, res, query) {
   response = {};
-  updateTimesDict(req, res, function(req, res, times){
-    console.log("Function is complete");
+  stopID = query.stopID;
+  routes = query.routes;
+  updateTimesDict(req, res, stopID, routes, function(req, res, times){
     response = times;
     console.log(response);
-
     // Handle http response here so it is only returned when at api has given data
     res.writeHead(200, {
       'Content-Type': 'application/json'
@@ -44,11 +40,12 @@ function getAllData(req, res) {
   return response;
 }
 
-function updateTimesDict(req, res, callback){
+function updateTimesDict(req, res, stopID, routes, callback){
   out = {"status":"ok", "time_requested":new Date(), "time_returned":"", "response":[]};
+  args.path.stopID = stopID;
   client.methods.departures(args, function(data, raw) {
     allData = data.response.movements;
-    filteredRoutes = filterRoutes(allData)
+    filteredRoutes = filterRoutes(allData, routes)
     filteredTimes = filterTimes(filteredRoutes);
     for(key in filteredTimes){
       stop = filteredTimes[key];
@@ -87,12 +84,12 @@ function filterTimes(times) {
   return filteredTimes;
 }
 
-function filterRoutes(routes) {
+function filterRoutes(routes, filter) {
   filteredRoutes = {}
   len = routes.length;
   for (i = 0; i < len; i++) {
     current = routes[i];
-    if (_routes.indexOf(current.route_short_name) > -1) {
+    if (filter.indexOf(current.route_short_name) > -1) {
       filteredRoutes[i] = current;
     }
   }
@@ -112,6 +109,6 @@ function convertArrivalTimeTo24hr(time) {
 var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
   queryObject = url.parse(req.url, true).query;
   console.log(queryObject);
-  getAllData(req, res);
+  getAllData(req, res, queryObject);
 });
 server.listen(8080);
