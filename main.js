@@ -23,13 +23,12 @@ console.log(args);
 client.registerMethod("departures", "https://api.at.govt.nz/v2/public-restricted/departures/${stopID}", "GET");
 
 
-function getAllData(req, res, query) {
+function getAllData(req, res, query, stopID) {
   response = {};
-  stopID = query.stopID;
   routes = query.routes;
   updateTimesDict(req, res, stopID, routes, function(req, res, times){
     response = times;
-    console.log(response);
+    //console.log(response);
     // Handle http response here so it is only returned when at api has given data
     res.writeHead(200, {
       'Content-Type': 'application/json'
@@ -56,7 +55,7 @@ function updateTimesDict(req, res, stopID, routes, callback){
       expH = expTime.getHours();
       expM = expTime.getMinutes();
       out.response.push({"route": stop.route_short_name, "scheduled_time":stop.scheduledArrivalTime, "expected_time":stop.expectedArrivalTime, "time_to_arrival": new Date(schedTime - expTime).getMinutes()});
-      console.log("Route: ", stop.route_short_name, "Scheduled arrival time: ", schedH, schedM, "Expected arrival time:", expH, expM);
+      //console.log("Route: ", stop.route_short_name, "Scheduled arrival time: ", schedH, schedM, "Expected arrival time:", expH, expM);
     }
     out.time_returned = new Date();
     return callback(req, res, out);
@@ -109,6 +108,9 @@ function convertArrivalTimeTo24hr(time) {
 var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
   queryObject = url.parse(req.url, true).query;
   console.log(queryObject);
-  getAllData(req, res, queryObject);
+  result = url.parse(req.url, true).pathname.split("/");
+  stopID = result[result.length - 2];
+  console.log("StopID: ", stopID);
+  getAllData(req, res, queryObject, stopID);
 });
 server.listen(8080);
