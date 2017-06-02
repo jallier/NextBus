@@ -48,14 +48,13 @@ function updateTimesDict(req, res, stopID, routes, callback){
     filteredTimes = filterTimes(filteredRoutes);
     for(key in filteredTimes){
       stop = filteredTimes[key];
-      schedTime = new Date(stop.scheduledArrivalTime);
-      schedH = schedTime.getHours();
-      schedM = schedTime.getMinutes();
-      expTime = new Date(stop.expectedArrivalTime);
-      expH = expTime.getHours();
-      expM = expTime.getMinutes();
-      out.response.push({"route": stop.route_short_name, "scheduled_time":stop.scheduledArrivalTime, "expected_time":stop.expectedArrivalTime, "time_to_arrival": new Date(schedTime - expTime).getMinutes()});
-      //console.log("Route: ", stop.route_short_name, "Scheduled arrival time: ", schedH, schedM, "Expected arrival time:", expH, expM);
+      timeTo = null;
+      if (stop.expectedArrivalTime != null){
+	      currentTime = new Date();
+	      expTime = new Date(stop.expectedArrivalTime);
+	      timeTo = Math.floor((expTime.getTime() - currentTime.getTime()) / 1000 / 60);
+      }
+      out.response.push({"route": stop.route_short_name, "scheduled_time":stop.scheduledArrivalTime, "expected_time":stop.expectedArrivalTime, "time_to_arrival": timeTo}); 
     }
     out.time_returned = new Date();
     return callback(req, res, out);
