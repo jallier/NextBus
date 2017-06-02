@@ -106,11 +106,29 @@ function convertArrivalTimeTo24hr(time) {
 // getAllData();
 
 var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
+    if (req.url === '/favicon.ico') {
+        res.writeHead(200, {'Content-Type': 'image/x-icon'} );
+        res.end();
+        console.log('favicon requested');
+        return;			  
+    } else if (req.url === '/'){
+	    res.writeHead(200,{
+	      'Content-Type': 'application/json'
+	    });
+	    res.write('{"status":"error", "response":"incorrect arguments"}')
+	    res.end();
+	    console.log('stop id not given');
+	    return;
+    }
   queryObject = url.parse(req.url, true).query;
-  console.log(queryObject);
+  console.log("request url", req.url);
+  console.log("query string", queryObject);
   result = url.parse(req.url, true).pathname.split("/");
   stopID = result[result.length - 2];
   console.log("StopID: ", stopID);
   getAllData(req, res, queryObject, stopID);
 });
-server.listen(8080);
+server.on('error', function(e){
+	console.log(e);
+});
+server.listen(8000);
