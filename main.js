@@ -6,6 +6,10 @@ var url = require('url');
 
 const _api = "https://api.at.govt.nz/v2/gtfs/";
 var _timeWindow = 30 * 60 * 1000; // 30 minutes in ms
+var hitCounter = 0;
+var prevTime = new Date();
+var currTime = '';
+var prevData = '';
 
 _key = fs.readFileSync('key.txt', 'utf8').trim(); //Sync so it reads before the server starts
 
@@ -52,6 +56,11 @@ function getAllData(req, res, query, stopID) {
 }
 
 function updateTimesDict(req, res, stopID, routes, callback) {
+    currTime = new Date();
+    if (currTime.getTime() - prevTime.getTime() < 1 * 60 * 1000 && hitCounter > 0) {
+        console.log("Less then 1 min since last request, returning cached data");
+        return callback(req, res, prevData);
+    }
     out = {
         "status": "ok",
         "time_requested": new Date(),
@@ -87,6 +96,9 @@ function updateTimesDict(req, res, stopID, routes, callback) {
             });
         }
         out.time_returned = new Date();
+        prevData = out;
+        hitCounter++;
+        prevTime = new Date();
         return callback(req, res, out);
     });
 }
