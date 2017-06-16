@@ -5,7 +5,7 @@ var sprintf = require('sprintf-js').sprintf;
 var url = require('url');
 
 const _api = "https://api.at.govt.nz/v2/gtfs/";
-const _timeWindow = 30 * 60 * 1000; // 30 minutes in ms
+var _timeWindow = 30 * 60 * 1000; // 30 minutes in ms
 
 _key = fs.readFileSync('key.txt', 'utf8').trim(); //Sync so it reads before the server starts
 
@@ -26,7 +26,17 @@ client.registerMethod("departures", "https://api.at.govt.nz/v2/public-restricted
 function getAllData(req, res, query, stopID) {
   response = {};
   routes = query.routes;
+  if(query.window!=null && query.window!=''){
+	  _timeWindow = query.window * 60 * 1000;
+  }else{
+	  _timeWindow = 30 * 60 * 1000;
+  } 
   updateTimesDict(req, res, stopID, routes, function(req, res, times){
+	  if(times==null){
+            res.writeHead(200, {"Content-Type":"application/json"});
+	    res.write('{"status":"error", "response":"No data returned from AT api"}');
+	    res.end();
+	  }
     response = times;
     //console.log(response);
     // Handle http response here so it is only returned when at api has given data
@@ -44,6 +54,9 @@ function updateTimesDict(req, res, stopID, routes, callback){
   args.path.stopID = stopID;
   client.methods.departures(args, function(data, raw) {
     allData = data.response.movements;
+    if(allData==null){
+        return callback(req, res, null);
+    }
     filteredRoutes = filterRoutes(allData, routes)
     filteredTimes = filterTimes(filteredRoutes);
     for(key in filteredTimes){
@@ -109,7 +122,7 @@ function convertArrivalTimeTo24hr(time) {
 
 // getAllData();
 
-var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
+var server = http.createServer(function(req, res) { 
     if (req.url === '/favicon.ico') {
         res.writeHead(200, {'Content-Type': 'image/x-icon'} );
         res.end();
