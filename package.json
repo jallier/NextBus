@@ -1,0 +1,29 @@
+{
+  "name": "at-nextbus",
+  "version": "1.0.0",
+  "dependencies": {
+    "node-rest-client": ">0.0.1",
+    "sprintf-js": ">0.0.1"
+  },
+  "description": "A small utility to fetch the next n bus stop times using the the Auckland Transport API",
+  "main": "main.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jallier/NextBus.git"
+  },
+  "keywords": [
+    "auckland",
+    "transport",
+    "bus"
+  ],
+  "author": "jallier",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jallier/NextBus/issues"
+  },
+  "homepage": "https://github.com/jallier/NextBus#readme"
+}

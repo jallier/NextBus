@@ -1,1 +1,4 @@
 your key here
+You can find the key needed to access this API from the AT website. See here: https://at.govt.nz/bus-train-ferry/real-time-board/
+
+I would include it, but i'm not sure how acceptable that is. To get the key, inspect the real time board, look at the network tab and check the query string for the subscription key. Then paste that key into a new text file called "key.txt".
