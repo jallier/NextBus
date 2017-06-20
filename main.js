@@ -2,132 +2,176 @@ var http = require('http');
 var fs = require('fs');
 var Client = require('node-rest-client').Client;
 var sprintf = require('sprintf-js').sprintf;
-var url = require('url') ;
+var url = require('url');
 
 const _api = "https://api.at.govt.nz/v2/gtfs/";
-const _tripID = "trips/tripId/";
-const _routeID = "routes/routeId/";
-const _stopId = "8515";
-const _timeWindow = 20 * 60; // 10 minutes
-const _routes = ['274', '277'];
+var _timeWindow = 30 * 60 * 1000; // 30 minutes in ms
+var hitCounter = 0;
+var prevTime = new Date();
+var currTime = '';
+var prevData = '';
 
 _key = fs.readFileSync('key.txt', 'utf8').trim(); //Sync so it reads before the server starts
 
 var client = new Client();
 var args = {
-  headers: {
-    "Ocp-Apim-Subscription-Key": _key
-  },
-  path: {
-    "tripID": "14277052711-20170420151239_v53.21"
-  }
+    headers: {
+        "Ocp-Apim-Subscription-Key": _key
+    },
+    path: {
+        "stopID": ""
+    }
 };
 console.log(args);
 
-client.registerMethod("getStopTimes", _api + "stopTimes/stopId/" + _stopId, "GET");
-client.registerMethod("tripID", _api + _tripID + "${tripID}", "GET");
+client.registerMethod("departures", "https://api.at.govt.nz/v2/public-restricted/departures/${stopID}", "GET");
 
-function getRouteName(tripID, callback) {
-  args = {
-    headers: {
-      "Ocp-Apim-Subscription-Key": _key
-    },
-    path: {
-      "tripID": tripID
+
+function getAllData(req, res, query, stopID) {
+    response = {};
+    routes = query.routes;
+    if (query.window != null && query.window != '') {
+        _timeWindow = query.window * 60 * 1000;
+    } else {
+        _timeWindow = 30 * 60 * 1000;
     }
-  };
-  client.methods.tripID(args, function(d, r) {
-    //call this function when route data returned
-    callback(tripID, d['response'][0]['route_id']);
-  });
-}
-
-function assignRoutes(times, callback) {
-  counter = Object.keys(times).length;
-  for (var key in times) {
-    getRouteName(key, function(trip, routeName) {
-      times[trip].route = trimRouteName(routeName);
-      counter--;
-      if (counter <= 0) { // Only fire the callback when all routes are named.
-        callback(times);
-      }
-    })
-  }
-}
-
-function trimRouteName(route) { //Lazy (and inaccurate) method to determine route shortname
-  return route.substring(0, 3);
-}
-
-function filterRoutes(timesDict) {
-  filteredTimes = {};
-  console.log("Times dictionary", timesDict);
-  for (key in timesDict) {
-    if (_routes.indexOf(timesDict[key].route) > -1) {
-      // console.log(key, timesDict[key]);
-      unique = true;
-      for(fKey in filteredTimes){
-        if(timesDict[key].arrival_time == filteredTimes[fKey].arrival_time && timesDict[key].route == filteredTimes[fKey].route){
-          unique = false;
-          break
+    updateTimesDict(req, res, stopID, routes, function(req, res, times) {
+        if (times == null) {
+            res.writeHead(200, {
+                "Content-Type": "application/json"
+            });
+            res.write('{"status":"error", "response":"No data returned from AT api"}');
+            res.end();
         }
-      }
-      if(unique){
-        filteredTimes[key] = timesDict[key];
-      }
-    }
-  }
-  console.log("Filtered times dict", filteredTimes);
+        response = times;
+        //console.log(response);
+        // Handle http response here so it is only returned when at api has given data
+        res.writeHead(200, {
+            'Content-Type': 'application/json'
+        });
+        res.write(JSON.stringify(response));
+        res.end();
+    });
+    return response;
 }
 
-function getAllData() {
-  client.methods.getStopTimes(args, function(data, response) {
-    // parsed response body as js object
-    console.log("Received all data; running loop");
-    data = data['response'];
-    times = {};
-    timeSinceMidnight = 0;
-    date = new Date();
-    timeSinceMidnight = (date.getHours() * 60 * 60) + (date.getMinutes() * 60) + (date.getSeconds()); //in seconds
-    // console.log(timeSinceMidnight);
-    len = data.length;
-    for (i = 0; i < len; i++) {
-      arrival_time = data[i]['arrival_time_seconds'];
-      id = data[i]['trip_id'];
-      if (arrival_time >= timeSinceMidnight && arrival_time <= (timeSinceMidnight + _timeWindow)) {
-        times[id] = {
-          "arrival_time": convertArrivalTimeTo24hr(arrival_time),
-          "route": ""
-        };
-      }
+function updateTimesDict(req, res, stopID, routes, callback) {
+    currTime = new Date();
+    if (currTime.getTime() - prevTime.getTime() < 1 * 60 * 1000 && hitCounter > 0) {
+        console.log("Less then 1 min since last request, returning cached data");
+        return callback(req, res, prevData);
     }
-    assignRoutes(times, function(nextTimes) {
-      times = nextTimes;
-      // console.log(times);
-      filterRoutes(times);
-    })
-    // console.log("Loop complete", times);
-  });
+    out = {
+        "status": "ok",
+        "time_requested": new Date(),
+        "time_returned": "",
+        "response": []
+    };
+    args.path.stopID = stopID;
+    client.methods.departures(args, function(data, raw) {
+        allData = data.response.movements;
+        if (allData == null) {
+            return callback(req, res, null);
+        }
+        filteredRoutes = filterRoutes(allData, routes)
+        filteredTimes = filterTimes(filteredRoutes);
+        for (key in filteredTimes) {
+            stop = filteredTimes[key];
+            timeTo = "";
+            if (stop.expectedArrivalTime != null) {
+                currentTime = new Date();
+                expTime = new Date(stop.expectedArrivalTime);
+                timeTo = "" + Math.floor((expTime.getTime() - currentTime.getTime()) / 1000 / 60);
+            } else {
+                currentTime = new Date();
+                schedTime = new Date(stop.scheduledArrivalTime);
+                timeTo = Math.floor((schedTime.getTime() - currentTime.getTime()) / 1000 / 60);
+                timeTo += "*";
+            }
+            out.response.push({
+                "route": stop.route_short_name,
+                "scheduled_time": stop.scheduledArrivalTime,
+                "expected_time": stop.expectedArrivalTime,
+                "time_to_arrival": timeTo
+            });
+        }
+        out.time_returned = new Date();
+        prevData = out;
+        hitCounter++;
+        prevTime = new Date();
+        return callback(req, res, out);
+    });
+}
+
+function filterTimes(times) {
+    filteredTimes = {}
+    actualTime = new Date().getTime();
+    actualTimes = new Date();
+    for (key in times) {
+        current = times[key];
+        scheduledTime = new Date(current.scheduledArrivalTime);
+        if (current.expectedArrivalTime) {
+            expectedTime = new Date(current.expectedArrivalTime);
+        } else {
+            expectedTime = scheduledTime;
+        }
+        scheduledTime = scheduledTime.getTime();
+        expectedTime = expectedTime.getTime();
+        if (scheduledTime >= actualTime && scheduledTime <= actualTime + _timeWindow) {
+            filteredTimes[key] = current;
+        }
+    }
+    return filteredTimes;
+}
+
+function filterRoutes(routes, filter) {
+    filteredRoutes = {}
+    len = routes.length;
+    for (i = 0; i < len; i++) {
+        current = routes[i];
+        if (filter.indexOf(current.route_short_name) > -1) {
+            filteredRoutes[i] = current;
+        }
+    }
+    return filteredRoutes;
 }
 
 function convertArrivalTimeTo24hr(time) {
-  hours = Math.floor(time / 60 / 60);
-  minutes = Math.floor(time / 60 - hours * 60);
-  seconds = Math.floor(time - hours * 60 * 60 - minutes * 60);
-  outputString = sprintf("%02d:%02d:%02d", hours, minutes, seconds);
-  return outputString;
+    hours = Math.floor(time / 60 / 60);
+    minutes = Math.floor(time / 60 - hours * 60);
+    seconds = Math.floor(time - hours * 60 * 60 - minutes * 60);
+    outputString = sprintf("%02d:%02d:%02d", hours, minutes, seconds);
+    return outputString;
 }
 
-// console.log(convertArrivalTimeTo24hr(57785, false));
-getAllData();
+// getAllData();
 
-var server = http.createServer(function(req, res) { //req is readable stream that emits data events for each incoming piece of data.
-  queryObject = url.parse(req.url,true).query;
-  console.log(queryObject);
-  res.writeHead(200, {
-    'Content-Type': 'application/json'
-  }); //res is writeable stream that is used to send data back to client.
-  res.write('{"text":"Hello Http"}');
-  res.end();
+var server = http.createServer(function(req, res) {
+    if (req.url === '/favicon.ico') {
+        res.writeHead(200, {
+            'Content-Type': 'image/x-icon'
+        });
+        res.end();
+        console.log('favicon requested');
+        return;
+    } else if (req.url === '/') {
+        res.writeHead(200, {
+            'Content-Type': 'application/json'
+        });
+        res.write('{"status":"error", "response":"incorrect arguments"}')
+        res.end();
+        console.log('stop id not given');
+        return;
+    }
+    queryObject = url.parse(req.url, true).query;
+    console.log("request url", req.url);
+    console.log("query string", queryObject);
+    result = url.parse(req.url, true).pathname.split("/");
+    stopID = result[result.length - 2];
+    console.log("StopID: ", stopID);
+    getAllData(req, res, queryObject, stopID);
 });
-server.listen(8080);
+server.on('error', function(e) {
+    console.log(e);
+});
+server.listen(8000);
